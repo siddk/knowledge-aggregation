@@ -98,12 +98,16 @@ class MnistKAN:
 
         return supervised_loss, actor_loss + self.critic_discount * critic_loss
 
+    def train_step(self):
+        pass
 
     def fit(self, envs):
         n_threads = len(envs)
         env_xs, env_as = [[] for _ in range(n_threads)], [[] for _ in range(n_threads)]
         env_rs, env_vs = [[] for _ in range(n_threads)], [[] for _ in range(n_threads)]
-        env_rnn_states = [np.zeros(self.rnn_sz) for _ in range(n_threads)]
+        env_rnn_states = [[np.zeros(self.rnn_sz)] for _ in range(n_threads)]
+        env_rnn_last = [np.zeros(self.rnn_sz) for _ in range(n_threads)]
+        episode_rs = np.zeros(len(envs), dtype=np.float)
 
         # Get Observations from all Environments
         observations = [env.reset() for env in envs]                                    # Shape [n_threads, 28, 28, 1]
@@ -115,7 +119,7 @@ class MnistKAN:
             step_xs = np.vstack(observations)
 
             # Get Logits, Policies/Actions, and Values for all Environments in Single Pass
-            step_logits, step_ps, step_vs, step_rnn = self.predict(step_xs, 0.5, env_rnn_states)  # TODO Check Dropout!
+            step_logits, step_ps, step_vs, step_rnn = self.predict(step_xs, 0.5, env_rnn_last)   # TODO Check Dropout!
             step_as = self.act(step_ps)
 
             # Perform Action in every Environment, Update Observations
@@ -123,4 +127,26 @@ class MnistKAN:
                 if not done[i]:
                     obs, r, done[i] = env.step(step_as[i], step_logits[i])
 
+                    # Record the observation, action, value, reward, and rnn_state in the buffers.
+                    env_xs[i].append(step_xs[i])
+                    env_as[i].append(step_as[i])
+                    env_vs[i].append(step_vs[i][0])
+                    env_rs[i].append(r)
+                    env_rnn_states[i].append(step_rnn[i])
+                    env_rnn_last[i] = step_rnn[i]
+                    episode_rs[i] += r
 
+                    # Add 0 as the state value when done.
+                    if done[i]:
+                        env_vs[i].append(0.0)
+                    else:
+                        observations[i] = obs
+
+                all_done = np.all(done)
+                t += 1
+
+        # Perform update when all episodes are finished
+        if len(env_xs[0]) > 0:
+            self.train_step(env_xs, env_as, env_rs, env_vs, env_rnn_states)
+
+        return episode_rs

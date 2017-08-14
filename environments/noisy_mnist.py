@@ -45,7 +45,7 @@ class NoisyMnist:
             # Update Obs, Increment Counter
             self.obs = self.transform(np.copy(self.base))
             self.counter += 1
-            return self.obs, 0, False
+            return self.obs, 0.0, False
 
     def reward(self, logits):
         return (self.logit_scalar * logits[self.label]) - (self.step_scalar * (self.counter + 1))
