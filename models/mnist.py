@@ -55,7 +55,7 @@ class MnistKAN:
         pool = MaxPooling2D(pool_size=self.pool_dim)(conv2)
 
         # Flatten + Dropout
-        flat_dropout = tf.nn.dropout(Flatten()(pool), self.Dropout)
+        flat_dropout = tf.nn.dropout(tf.reshape(pool, shape=[-1, 12 * 12 * 64]), self.Dropout)
 
         # Dense Layer
         hidden = Dense(128, activation='relu')(flat_dropout)
@@ -98,25 +98,27 @@ class MnistKAN:
 
         return supervised_loss, actor_loss + self.critic_discount * critic_loss
 
-    def train_step(self):
-        pass
+    def train_step(self, env_xs, env_as, env_rs, env_vs, env_rnn_states, env_labels):
+        import IPython
+        IPython.embed()
 
     def fit(self, envs):
         n_threads = len(envs)
         env_xs, env_as = [[] for _ in range(n_threads)], [[] for _ in range(n_threads)]
         env_rs, env_vs = [[] for _ in range(n_threads)], [[] for _ in range(n_threads)]
-        env_rnn_states = [[np.zeros(self.rnn_sz)] for _ in range(n_threads)]
+        env_rnn_states, env_labels = [[np.zeros(self.rnn_sz)] for _ in range(n_threads)], [[] for _ in range(n_threads)]
         env_rnn_last = [np.zeros(self.rnn_sz) for _ in range(n_threads)]
         episode_rs = np.zeros(len(envs), dtype=np.float)
 
         # Get Observations from all Environments
         observations = [env.reset() for env in envs]                                    # Shape [n_threads, 28, 28, 1]
-        done, all_done, t = np.array([False] for _ in range(n_threads)), False, 1
+        labels = [env.label for env in envs]                                            # Shape [n_threads]
+        done, all_done, t = np.array([False for _ in range(n_threads)]), False, 1
 
         # Run Episode Loop
         while not all_done:
             # Stack all Observations into a Single Matrix
-            step_xs = np.vstack(observations)
+            step_xs = np.array(observations)
 
             # Get Logits, Policies/Actions, and Values for all Environments in Single Pass
             step_logits, step_ps, step_vs, step_rnn = self.predict(step_xs, 0.5, env_rnn_last)   # TODO Check Dropout!
@@ -132,6 +134,7 @@ class MnistKAN:
                     env_as[i].append(step_as[i])
                     env_vs[i].append(step_vs[i][0])
                     env_rs[i].append(r)
+                    env_labels[i].append(labels[i])
                     env_rnn_states[i].append(step_rnn[i])
                     env_rnn_last[i] = step_rnn[i]
                     episode_rs[i] += r
@@ -147,6 +150,6 @@ class MnistKAN:
 
         # Perform update when all episodes are finished
         if len(env_xs[0]) > 0:
-            self.train_step(env_xs, env_as, env_rs, env_vs, env_rnn_states)
+            self.train_step(env_xs, env_as, env_rs, env_vs, env_rnn_states, env_labels)
 
         return episode_rs

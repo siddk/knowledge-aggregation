@@ -11,7 +11,7 @@ class NoisyMnist:
         """
         Initialize a Noisy MNIST Environment, with the given Training Data.
         """
-        self.X, self.Y, self.max_len = X, Y, max_len
+        self.X, self.Y, self.max_len = np.expand_dims(X, axis=-1), Y, max_len
         self.logit_scalar, self.step_scalar = logit_scalar, step_scalar
         assert(len(self.X) == len(self.Y))
 
@@ -37,7 +37,7 @@ class NoisyMnist:
         """
         Step with current environment, applying action (transform base again if 0), or returning final reward (if 1).
         """
-        if (self.counter + 1 >= self.max_len) or (action == 1):
+        if (self.counter + 1 > self.max_len) or (action == 1):
             # Done => Compute Final Reward
             reward = self.reward(logits)
             return self.obs, reward, True
@@ -60,6 +60,9 @@ class NoisyMnist:
         n_times = np.random.randint(50, 700 + 1)
         idx = np.random.choice(784, n_times, replace=False)
         corruption = np.random.randn(n_times)
+
+        base_image = np.reshape(base_image, newshape=[784])
         base_image[idx] = corruption
+        base_image = np.reshape(base_image, newshape=[28, 28, 1])
         return base_image
 
