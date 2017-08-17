@@ -10,12 +10,13 @@ import tensorflow as tf
 
 
 class MnistKAN:
-    def __init__(self, img_rows=28, img_cols=28, cnn_depths=(32, 64), cnn_filters=((3, 3), (3, 3)), pool_dim=(2, 2),
-                 hidden_sz=128, rnn_sz=64, submodule_sz=64, num_classes=10, num_actions=2, max_len=5,
+    def __init__(self, supervised_exploit, img_rows=28, img_cols=28, cnn_depths=(32, 64), cnn_filters=((3, 3), (3, 3)),
+                 pool_dim=(2, 2), hidden_sz=128, rnn_sz=64, submodule_sz=64, num_classes=10, num_actions=2, max_len=5,
                  critic_discount=0.5, gamma=0.99, lambda_=1.0):
         """
         Initialize an MNIST Knowledge Aggregation Network, with the necessary hyperparameters.
         """
+        self.supervised_exploit = supervised_exploit
         self.img_rows, self.img_cols, self.num_classes, self.num_actions = img_rows, img_cols, num_classes, num_actions
         self.cnn_depths, self.cnn_filters, self.pool_dim = cnn_depths, cnn_filters, pool_dim
         self.rnn_sz, self.hidden_sz, self.submodule_sz, self.max_len = rnn_sz, hidden_sz, submodule_sz, max_len
@@ -81,16 +82,18 @@ class MnistKAN:
         images = tf.reshape(self.Image_Spread, shape=[-1, self.img_rows, self.img_cols, 1])
 
         # First Convolutional Layer
-        conv1 = self.conv1(images)                                                # Shape: [None * max_len, 24, 24, 32]
+        conv1 = self.conv1(images)                                                 # Shape: [None * max_len, 24, 24, 32]
+
+        pool1 = self.pool(conv1)
 
         # Second Convolutional Layer
-        conv2 = self.conv2(conv1)                                                 # Shape: [None * max_len, 24, 24, 64]
+        conv2 = self.conv2(pool1)                                                  # Shape: [None * max_len, 12, 12, 64]
 
         # Pooling Layer
-        pool = self.pool(conv2)                                                   # Shape: [None * max_len, 12, 12, 64]
+        pool2 = self.pool(conv2)                                                   # Shape: [None * max_len, 5, 5, 64]
 
         # Flatten + Dropout
-        flat_dropout = tf.nn.dropout(tf.reshape(pool, shape=[-1, 12 * 12 * 64]), self.Dropout)
+        flat_dropout = tf.nn.dropout(tf.reshape(pool2, shape=[-1, 5 * 5 * 64]), self.Dropout)
 
         # Dense Layer
         hidden = self.hidden(flat_dropout)                                        # Shape: [None * max_len, hidden]
@@ -113,14 +116,16 @@ class MnistKAN:
         # First Convolutional Layer
         conv1 = self.conv1(self.Single_Image)
 
+        pool1 = self.pool(conv1)
+
         # Second Convolutional Layer
-        conv2 = self.conv2(conv1)
+        conv2 = self.conv2(pool1)
 
         # Pooling Layer
-        pool = self.pool(conv2)
+        pool2 = self.pool(conv2)
 
         # Flatten + Dropout
-        flat_dropout = tf.nn.dropout(tf.reshape(pool, shape=[-1, 12 * 12 * 64]), self.Dropout)
+        flat_dropout = tf.nn.dropout(tf.reshape(pool2, shape=[-1, 5 * 5 * 64]), self.Dropout)
 
         # Dense Layer
         hidden = self.hidden(flat_dropout)
@@ -150,8 +155,13 @@ class MnistKAN:
                                 feed_dict={self.Single_Image: images, self.RNN_State: rnn_states,
                                            self.Dropout: dropout})
 
-    def act(self, policies):
-        return [np.random.choice(self.num_actions, p=p) for p in policies]
+    def act(self, policies, episode_no):
+        # If Supervised Learning => Take Argmax of Policy
+        if episode_no % 2 == 0 or episode_no > self.supervised_exploit:
+            return [np.argmax(p) for p in policies]
+        # If Reinforcement Learning => Sample from Policy
+        else:
+            return [np.random.choice(self.num_actions, p=p) for p in policies]
 
     def loss(self):
         # Supervised Learning Loss
@@ -167,7 +177,7 @@ class MnistKAN:
 
     def train_step(self, env_xs, env_as, env_rs, env_vs, env_rnn_states, env_labels, episode_no):
         # If Episode is Even => Do Supervised Train Step
-        if episode_no % 2 == 0:           # TODO => CAN ALSO CONTROL BURN-IN PERIOD WHERE SUPERVISED JUST GETS TRAINED
+        if episode_no % 2 == 0 or episode_no > self.supervised_exploit:   # TODO => CAN ALSO CONTROL BURN-IN PERIOD WHERE SUPERVISED JUST GETS TRAINED
             bsz, lengths, labels = len(env_labels), map(lambda x: len(x), env_labels), map(lambda x: x[0], env_labels)
             xs = np.zeros([bsz, self.max_len, self.img_rows, self.img_cols, 1], dtype=np.float)
             for i in range(bsz):
@@ -234,7 +244,7 @@ class MnistKAN:
 
             # Get Logits, Policies/Actions, and Values for all Environments in Single Pass
             step_logits, step_ps, step_vs, step_rnn = self.predict(step_xs, 1.0, env_rnn_last)   # TODO Check Dropout!
-            step_as = self.act(step_ps)
+            step_as = self.act(step_ps, episode_no)
 
             # Perform Action in every Environment, Update Observations
             for i, env in enumerate(envs):

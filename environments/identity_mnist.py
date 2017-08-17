@@ -1,13 +1,13 @@
 """
-noisy_mnist.py
+identity_mnist.py
 
-Environment for Noisy MNIST Experiment.
+Environment for Identity MNIST Experiment.
 """
 import numpy as np
 
 
-class NoisyMnist:
-    def __init__(self, X, Y, max_len=5, logit_scalar=10.0, step_scalar=1.0, seed=None):
+class IdentityMnist:
+    def __init__(self, X, Y, max_len=5, logit_scalar=5.0, step_scalar=1.0, seed=None):
         """
         Initialize a Noisy MNIST Environment, with the given Training Data.
         """
@@ -59,16 +59,7 @@ class NoisyMnist:
     @staticmethod
     def transform(base_image):
         """
-        Transformation for Noisy MNIST =>
-            - Sample from Uniform [50, 700] => Sample n_times from {1, 784} => idx to corrupt
-            - Sample n_times from N(0, 1) => Corrupted values
+        Transformation for MNIST => Identity
         """
-        n_times = np.random.randint(50, 600 + 1)
-        idx = np.random.choice(784, n_times, replace=False)
-        corruption = np.random.randn(n_times)
-
-        base_image = np.reshape(base_image, newshape=[784])
-        base_image[idx] = corruption
-        base_image = np.reshape(base_image, newshape=[28, 28, 1])
         return base_image
 
