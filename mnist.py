@@ -27,17 +27,28 @@ def main(_):
 
     # Create environments
     envs = [NoisyMnist(x_train, y_train) for _ in range(FLAGS.n_threads)]
+    test_envs = [NoisyMnist(x_test[i], y_test[i], seed=i) for i in range(len(x_test))]
 
     # Fit Model
     running_reward = None
-    for e in range(2000):
+    for e in range(5000):
         episode_rs = mnist_kan.fit(envs, e)
         for er in episode_rs:
             running_reward = er if running_reward is None else (0.99 * running_reward + 0.01 * er)
 
         if e % 10 == 0:
-            print 'Batch %d (episode %d), batch avg. reward: %.2f, running reward: %.3f' % (e, (e + 1) * FLAGS.n_threads, np.mean(episode_rs), running_reward)
+            print 'Batch {:d} (episode {:d}), batch avg. reward: {:.2f}, running reward: {:.3f}' \
+                .format(e, (e + 1) * FLAGS.n_threads, np.mean(episode_rs), running_reward)
 
+        if e % 500 == 0:
+            accuracy, average_length = mnist_kan.eval(test_envs)
+            print ''
+            print 'Sampled Test Accuracy: %.3f\tAverage # of Observations: %.2f' % (accuracy, average_length)
+            print ''
+
+    # Evaluate Full
+    test_accuracy, test_length = mnist_kan.eval(test_envs, num=len(test_envs))
+    print 'Full Test Accuracy: %.3f\tAverage # of Observations: %.2f' % (test_accuracy, test_length)
 
 if __name__ == "__main__":
     tf.app.run()

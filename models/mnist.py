@@ -176,7 +176,8 @@ class MnistKAN:
             accuracy, loss, _ = self.session.run([self.accuracy, self.supervised_loss, self.supervised_train_op],
                                            feed_dict={self.Image_Spread: xs, self.Spread_Length: lengths,
                                                       self.Label: labels, self.Dropout: 0.5})
-            print 'Step %d\tAccuracy: %.3f\tLoss: %.3f' % (episode_no, accuracy, loss)
+            if episode_no % 10 == 0:
+                print 'Step %d\tAccuracy: %.3f\tLoss: %.3f' % (episode_no, accuracy, loss)
 
         # If Episode is Odd => Do Actor-Critic Train Step
         else:
@@ -264,3 +265,27 @@ class MnistKAN:
             self.train_step(env_xs, env_as, env_rs, env_vs, env_rnn_states, env_labels, episode_no)
 
         return episode_rs
+
+    def eval(self, test_envs, num=500):
+        correct, episode_lengths = 0.0, []
+        picks = np.random.choice(len(test_envs), num, replace=False)
+        for idx in range(num):
+            env = test_envs[picks[idx]]
+            obs, rnn_state, counter, class_p, done = env.reset(), np.zeros(self.rnn_sz), 0, None, False
+            while not done:
+                counter += 1
+                class_p, policy, _, new_rnn_state = self.predict([obs], 1.0, [rnn_state])
+                class_p, policy, rnn_state = class_p[0], policy[0], new_rnn_state[0]
+
+                if np.argmax(policy) == 1:
+                    done = True
+                else:
+                    obs, r, done = env.step(0, class_p)
+
+            # Update Correct, Episode Lengths
+            if np.argmax(class_p) == env.label:
+                correct += 1
+            episode_lengths.append(counter)
+
+        # Return Accuracy, Average Episode Length
+        return correct / float(num), np.mean(episode_lengths)

@@ -13,7 +13,13 @@ class NoisyMnist:
         """
         self.X, self.Y, self.max_len = np.expand_dims(X, axis=-1), Y, max_len
         self.logit_scalar, self.step_scalar = logit_scalar, step_scalar
-        assert(len(self.X) == len(self.Y))
+
+        # Check if Seed
+        if seed is not None:
+            self.X, self.Y = [self.X], [self.Y]
+            np.random.seed(seed)
+        else:
+            assert(len(self.X) == len(self.Y))
 
         # Create Fields for Current Base Image, Observation, and Label
         self.base, self.obs, self.label, self.counter = None, None, None, 1
