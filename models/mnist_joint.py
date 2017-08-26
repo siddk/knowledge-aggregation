@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 
 
-class MnistKAN:
+class MnistKANJoint(object):
     def __init__(self, supervised_exploit, img_rows=28, img_cols=28, cnn_depths=(32, 64), cnn_filters=((3, 3), (3, 3)),
                  pool_dim=(2, 2), hidden_sz=128, rnn_sz=64, submodule_sz=64, num_classes=10, num_actions=2, max_len=5,
                  critic_discount=0.5, gamma=0.99, lambda_=1.0):
@@ -44,7 +44,7 @@ class MnistKAN:
         self.instantiate_weights()
 
         # Compute supervised logits
-        self.super_logits = self.supervised_forward()
+        #self.super_logits = self.supervised_forward()
 
         # Compute logits, policy, and value estimate
         self.ac_logits, self.policy, self.value = self.ac_forward()
@@ -54,11 +54,11 @@ class MnistKAN:
         self.supervised_loss, self.ac_loss = self.loss()
 
         # Build Accuracy Operation
-        correct = tf.equal(tf.argmax(self.super_logits, 1), self.Label)
-        self.accuracy = tf.reduce_mean(tf.cast(correct, tf.float32), name="Accuracy")
+        #correct = tf.equal(tf.argmax(self.super_logits, 1), self.Label)
+        #self.accuracy = tf.reduce_mean(tf.cast(correct, tf.float32), name="Accuracy")
 
         # Build Separate Training Operations for Losses
-        self.supervised_train_op = tf.train.AdamOptimizer().minimize(self.supervised_loss)
+        #self.supervised_train_op = tf.train.AdamOptimizer().minimize(self.supervised_loss)
         self.ac_train_op = tf.train.AdamOptimizer().minimize(self.ac_loss)
 
         # Initialize all Variables
@@ -77,40 +77,40 @@ class MnistKAN:
         self.value_layer = Dense(1, activation='linear')
         self.cell = tf.contrib.rnn.GRUCell(self.rnn_sz)
 
-    def supervised_forward(self):
-        # Reshape into individual images
-        images = tf.reshape(self.Image_Spread, shape=[-1, self.img_rows, self.img_cols, 1])
-
-        # First Convolutional Layer
-        conv1 = self.conv1(images)                                                 # Shape: [None * max_len, 24, 24, 32]
-
-        pool1 = self.pool(conv1)
-
-        # Second Convolutional Layer
-        conv2 = self.conv2(pool1)                                                  # Shape: [None * max_len, 12, 12, 64]
-
-        # Pooling Layer
-        pool2 = self.pool(conv2)                                                   # Shape: [None * max_len, 5, 5, 64]
-
-        # Flatten + Dropout
-        flat_dropout = tf.nn.dropout(tf.reshape(pool2, shape=[-1, 5 * 5 * 64]), self.Dropout)
-
-        # Dense Layer
-        hidden = self.hidden(flat_dropout)                                        # Shape: [None * max_len, hidden]
-
-        # Reshape into Time Series
-        hidden = tf.reshape(hidden, shape=[-1, self.max_len, self.hidden_sz])     # Shape: [None, max_len, hidden]
-
-        # GRU - RNN with Empty Initial State
-        with tf.variable_scope('RNN', reuse=None):
-            _, self.super_final_state = tf.nn.dynamic_rnn(self.cell, hidden, dtype=tf.float32,
-                                                          sequence_length=self.Spread_Length)
-
-        # Logits Hidden Layer => Linear
-        l_hidden = self.l_hidden(self.super_final_state)
-        logits = self.logit_layer(l_hidden)
-
-        return logits
+    # def supervised_forward(self):
+    #     # Reshape into individual images
+    #     images = tf.reshape(self.Image_Spread, shape=[-1, self.img_rows, self.img_cols, 1])
+    #
+    #     # First Convolutional Layer
+    #     conv1 = self.conv1(images)                                                 # Shape: [None * max_len, 24, 24, 32]
+    #
+    #     pool1 = self.pool(conv1)
+    #
+    #     # Second Convolutional Layer
+    #     conv2 = self.conv2(pool1)                                                  # Shape: [None * max_len, 12, 12, 64]
+    #
+    #     # Pooling Layer
+    #     pool2 = self.pool(conv2)                                                   # Shape: [None * max_len, 5, 5, 64]
+    #
+    #     # Flatten + Dropout
+    #     flat_dropout = tf.nn.dropout(tf.reshape(pool2, shape=[-1, 5 * 5 * 64]), self.Dropout)
+    #
+    #     # Dense Layer
+    #     hidden = self.hidden(flat_dropout)                                        # Shape: [None * max_len, hidden]
+    #
+    #     # Reshape into Time Series
+    #     hidden = tf.reshape(hidden, shape=[-1, self.max_len, self.hidden_sz])     # Shape: [None, max_len, hidden]
+    #
+    #     # GRU - RNN with Empty Initial State
+    #     with tf.variable_scope('RNN', reuse=None):
+    #         _, self.super_final_state = tf.nn.dynamic_rnn(self.cell, hidden, dtype=tf.float32,
+    #                                                       sequence_length=self.Spread_Length)
+    #
+    #     # Logits Hidden Layer => Linear
+    #     l_hidden = self.l_hidden(self.super_final_state)
+    #     logits = self.logit_layer(l_hidden)
+    #
+    #     return logits
 
     def ac_forward(self):
         # First Convolutional Layer
@@ -177,48 +177,35 @@ class MnistKAN:
 
     def train_step(self, env_xs, env_as, env_rs, env_vs, env_rnn_states, env_labels, episode_no):
         # If Episode is Even => Do Supervised Train Step
-        if episode_no % 2 == 0 or episode_no > self.supervised_exploit:   # TODO => CAN ALSO CONTROL BURN-IN PERIOD WHERE SUPERVISED JUST GETS TRAINED
-            bsz, lengths, labels = len(env_labels), map(lambda x: len(x), env_labels), map(lambda x: x[0], env_labels)
-            xs = np.zeros([bsz, self.max_len, self.img_rows, self.img_cols, 1], dtype=np.float)
-            for i in range(bsz):
-                for j, img in enumerate(env_xs[i]):
-                    xs[i][j] = img
-            accuracy, loss, _ = self.session.run([self.accuracy, self.supervised_loss, self.supervised_train_op],
-                                           feed_dict={self.Image_Spread: xs, self.Spread_Length: lengths,
-                                                      self.Label: labels, self.Dropout: 0.5})
-            if episode_no % 10 == 0:
-                print 'Step %d\tAccuracy: %.3f\tLoss: %.3f' % (episode_no, accuracy, loss)
 
-        # If Episode is Odd => Do Actor-Critic Train Step
-        else:
-            # Flatten Observations into 2D Tensor
-            xs = np.array(list(chain.from_iterable(env_xs)))
+        # Flatten Observations into 2D Tensor
+        xs = np.array(list(chain.from_iterable(env_xs)))
 
-            # Flatten RNN States
-            rnn_states = np.vstack(list(chain.from_iterable(map(lambda x: x[:-1], env_rnn_states))))
+        # Flatten RNN States
+        rnn_states = np.vstack(list(chain.from_iterable(map(lambda x: x[:-1], env_rnn_states))))
 
-            # One-Hot Actions
-            as_ = np.zeros((len(xs), self.num_actions))
-            as_[np.arange(len(xs)), list(chain.from_iterable(env_as))] = 1
+        # One-Hot Actions
+        as_ = np.zeros((len(xs), self.num_actions))
+        as_[np.arange(len(xs)), list(chain.from_iterable(env_as))] = 1
 
-            # Compute Discounted Rewards + Advantages
-            drs, advs = [], []
-            for i in range(len(env_vs)):
-                # Compute discounted rewards with a 'bootstrapped' final value
-                rs_bootstrap = [] if env_rs[i] == [] else env_rs[i] + [env_vs[i][-1]]
-                drs.extend(self._discount(rs_bootstrap, self.gamma)[:-1])
+        # Compute Discounted Rewards + Advantages
+        drs, advs = [], []
+        for i in range(len(env_vs)):
+            # Compute discounted rewards with a 'bootstrapped' final value
+            rs_bootstrap = [] if env_rs[i] == [] else env_rs[i] + [env_vs[i][-1]]
+            drs.extend(self._discount(rs_bootstrap, self.gamma)[:-1])
 
-                # Compute advantages via GAE - Schulman et. al. 2016
-                delta_t = env_rs[i] + self.gamma * np.array(env_vs[i][1:]) - np.array(env_vs[i][:-1])  # (Eq 11)
-                advs.extend(self._discount(delta_t, self.gamma * self.lambda_))
+            # Compute advantages via GAE - Schulman et. al. 2016
+            delta_t = env_rs[i] + self.gamma * np.array(env_vs[i][1:]) - np.array(env_vs[i][:-1])  # (Eq 11)
+            advs.extend(self._discount(delta_t, self.gamma * self.lambda_))
 
-            # Expand drs, advs to be 2D Tensors
-            drs, advs = np.array(drs)[:, np.newaxis], np.array(advs)[:, np.newaxis]
+        # Expand drs, advs to be 2D Tensors
+        drs, advs = np.array(drs)[:, np.newaxis], np.array(advs)[:, np.newaxis]
 
-            # RL Training Update
-            self.session.run(self.ac_train_op, feed_dict={self.Single_Image: xs, self.Action: as_, self.Reward: drs,
-                                                          self.Advantage: advs, self.RNN_State: rnn_states,
-                                                          self.Dropout: 1.0})
+        # RL Training Update
+        self.session.run(self.ac_train_op, feed_dict={self.Single_Image: xs, self.Action: as_, self.Reward: drs,
+                                                      self.Advantage: advs, self.RNN_State: rnn_states,
+                                                      self.Dropout: 1.0})
 
     @staticmethod
     def _discount(x, gamma):
@@ -246,7 +233,7 @@ class MnistKAN:
             step_logits, step_ps, step_vs, step_rnn = self.predict(step_xs, 1.0, env_rnn_last)   # TODO Check Dropout!
             step_as = self.act(step_ps, episode_no)
 
-            # Perform Action in every Environment, ` Observations
+            # Perform Action in every Environment, Update Observations
             for i, env in enumerate(envs):
                 if not done[i]:
                     obs, r, done[i] = env.step(step_as[i], step_logits[i])
