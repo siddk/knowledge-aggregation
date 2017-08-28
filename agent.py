@@ -149,13 +149,34 @@ class Agent(object):
         # Return Episode Rewards
         return episode_rs
 
+    def eval(self, test_envs, num=500):
+        correct, episode_lengths = 0.0, []
+        picks = np.random.choice(len(test_envs), num, replace=False)
+        for idx in range(num):
+            env = test_envs[picks[idx]]
+            obs = env.reset()
+            [policies], _ = self.predict([obs])
+
+            for i in range(self.max_iters):
+                action = np.argmax(policies[i])
+                if action != 10:
+                    if action == env.label:
+                        correct += 1
+                        episode_lengths.append(i)
+
+            if len(episode_lengths) != idx + 1:
+                episode_lengths.append(self.max_iters - 1)
+
+        # Return Accuracy, Average Episode Length
+        return correct / float(num), np.mean(episode_lengths)
+
 
 if __name__ == "__main__":
     # Load Datasets
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
     # Instantiate Model
-    mnist_kan, envs = Agent(), None
+    mnist_kan, envs, test_envs = Agent(), None, None
 
     if MNIST_EXPERIMENT == 'Identity':
         # Create environments
@@ -173,4 +194,10 @@ if __name__ == "__main__":
         if e % 10 == 0:
             print 'Batch {:d} (episode {:d}), batch avg. reward: {:.2f}, running reward: {:.3f}' \
                 .format(e, (e + 1) * N_THREADS, np.mean(episode_rs), running_reward)
+
+        if e % 500 == 0:
+            accuracy, average_length = mnist_kan.eval(test_envs)
+            print ''
+            print 'Sampled Test Accuracy: %.3f\tAverage # of Observations: %.2f' % (accuracy, average_length)
+            print ''
 
