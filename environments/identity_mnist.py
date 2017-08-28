@@ -21,12 +21,12 @@ class IdentityMnist:
         else:
             assert(len(self.X) == len(self.Y))
 
-        # Create Fields for Current Base Image, Observation, and Label
-        self.base, self.obs, self.label, self.counter = None, None, None, 1
+        # Create Fields for Current Base Image, Observations, and Label
+        self.base, self.obs, self.label = None, None, None
 
     def reset(self):
         """
-        Sample new base image, label from data, apply transformation to generate new observation.
+        Sample new base image, label from data, apply transformations to generate new observation.
         """
         idx = np.random.choice(len(self.X))
         self.base, self.label = self.X[idx], self.Y[idx]
@@ -34,32 +34,14 @@ class IdentityMnist:
         # Apply transformation to base and generate new observation
         self.obs = self.transform(np.copy(self.base))
 
-        # Set Counter
-        self.counter = 1
-
         return self.obs
 
-    def step(self, action, probabilities):
-        """
-        Step with current environment, applying action (transform base again if 0), or returning final reward (if 1).
-        """
-        if (self.counter + 1 > self.max_len) or (action == 1):
-            # Done => Compute Final Reward
-            reward = self.reward(probabilities)
-            return self.obs, reward, True
-        else:
-            # Update Obs, Increment Counter
-            self.obs = self.transform(np.copy(self.base))
-            self.counter += 1
-            return self.obs, 0.0, False
+    def reward(self, probabilities, counter):
+        return (self.logit_scalar * probabilities[self.label]) - (self.step_scalar * counter)
 
-    def reward(self, probabilities):
-        return (self.logit_scalar * probabilities[self.label]) - (self.step_scalar * (self.counter + 1))
-
-    @staticmethod
-    def transform(base_image):
+    def transform(self, base_image):
         """
         Transformation for MNIST => Identity
         """
-        return base_image
+        return [base_image for _ in range(self.max_len)]
 
